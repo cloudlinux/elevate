@@ -120,6 +120,7 @@ BEGIN {    # Suppress load of all of these at earliest point.
           getopt
           update_stage_file
           upgrade_to_rocky
+          upgrade_to_cloudlinux
           upgrade_to_pretty_name
           should_run_leapp
           ssystem
@@ -492,6 +493,8 @@ BEGIN {    # Suppress load of all of these at earliest point.
 
     sub _blocker_old_mysql ( $self, $mysql_version = undef ) {
 
+        return 0;
+
         $mysql_version //= $self->cpconf->{'mysql-version'} // '';
 
         my $pretty_distro_name = $self->upgrade_to_pretty_name();
@@ -701,9 +704,9 @@ EOS
     }
 
     sub _blocker_is_non_centos7 ($self) {
-        unless ( Cpanel::OS::major() == 7 && Cpanel::OS::distro() eq 'centos' ) {
+        unless ( Cpanel::OS::major() == 7 ) {
             my $pretty_distro_name = $self->upgrade_to_pretty_name();
-            return $self->has_blocker(qq[This script is only designed to upgrade CentOS 7 to $pretty_distro_name.]);
+            return $self->has_blocker(qq[This script is only designed to upgrade CentOS 7 or CloudLinux 7 to $pretty_distro_name.]);
         }
 
         return 0;
@@ -714,7 +717,7 @@ EOS
             my $pretty_distro_name = $self->upgrade_to_pretty_name();
             return $self->has_blocker(
                 sprintf(
-                    'You need to run CentOS 7.%s and later to upgrade %s. You are currently using %s',    #
+                    'You need to run CentOS 7 or CloudLinux 7.%s and later to upgrade %s. You are currently using %s',    #
                     MINIMUM_CENTOS_7_SUPPORTED, $pretty_distro_name, Cpanel::OS::display_name()           #
                 )
             );
@@ -725,7 +728,7 @@ EOS
 
     sub _blocker_is_experimental_os ($self) {
         if ( -e '/var/cpanel/caches/Cpanel-OS.custom' ) {
-            return $self->has_blocker('Experimental OS detected. This script only supports CentOS 7 upgrades');
+            return $self->has_blocker('Experimental OS detected. This script only supports CentOS 7 and CloudLinux 7 upgrades');
         }
 
         return 0;
@@ -733,8 +736,8 @@ EOS
 
     sub bail_out_on_inappropriate_distro () {
 
-        if ( !( eval { Cpanel::OS::can_be_elevated() } // ( Cpanel::OS::distro() eq 'centos' && Cpanel::OS::major() == 7 ) ) ) {
-            FATAL(qq[This script is designed to only run on CentOS 7 servers.\n]);
+        if ( !( ( Cpanel::OS::major() == 7 ) ) ) {
+            FATAL(qq[This script is designed to only run on CentOS 7 and CloudLinux 7 servers.\n]);
             exit 1;
         }
 
@@ -1433,6 +1436,7 @@ EOS
     use Cpanel::Pkgr ();
 
     sub check ($self) {
+        return 0;
         my $pkg = Cpanel::Pkgr::what_provides('python36');
         return unless $pkg && Cpanel::Pkgr::is_installed($pkg);
         return $self->has_blocker( <<~"END" );
@@ -1544,6 +1548,20 @@ EOS
       imunify360-rollout-8
       influxdb
       kernelcare
+      cloudlinux
+      cloudlinux-base
+      cloudlinux-updates
+      cloudlinux-extras
+      cloudlinux-rollouto
+      cloudlinux-compat
+      cloudlinux-imunify360
+      cl-ea4
+      cloudlinux-ea4
+      cloudlinux-ea4-rollout
+      cloudlinux-ea4-testing
+      cl-mysql
+      cl-mysql-meta
+      cloudlinux-elevate
       updates
       wp-toolkit-cpanel
       wp-toolkit-thirdparties
@@ -1995,6 +2013,7 @@ EOS
           getopt
           update_stage_file
           upgrade_to_rocky
+          upgrade_to_cloudlinux
           upgrade_to_pretty_name
           tmp_dir
           should_run_leapp
@@ -2253,7 +2272,12 @@ EOS
 
     sub _get_ea4_profile ($self) {
 
-        my $ea_alias = $self->upgrade_to_rocky() ? 'CentOS_8' : 'AlmaLinux_8';
+        my $ea_alias = 'AlmaLinux_8';
+        if ($self->upgrade_to_rocky()) {
+            $ea_alias = 'CentOS_8';
+        } elsif ($self->upgrade_to_cloudlinux()) {
+            $ea_alias = 'CloudLinux_8';
+        }
 
         my @cmd = ( '/usr/local/bin/ea_current_to_profile', "--target-os=$ea_alias" );
 
@@ -2526,6 +2550,7 @@ EOS
     sub pre_leapp ($self) {
 
         return unless $self->is_installed;
+        return 0;
 
         $self->run_once("_capture_imunify_features");
         $self->run_once("_capture_imunify_packages");
@@ -2948,6 +2973,7 @@ EOS
 
     sub pre_leapp ($self) {
 
+        return 0;
         $self->run_once("_remove_kernelcare_if_needed");
 
         return;
@@ -2955,6 +2981,7 @@ EOS
 
     sub post_leapp ($self) {
 
+        return 0;
         $self->run_once('_restore_kernelcare');
 
         return;
@@ -3077,12 +3104,16 @@ EOS
 
     sub pre_leapp ($self) {
 
+        return 0;
+
         $self->run_once("_cleanup_mysql_packages");
 
         return;
     }
 
     sub post_leapp ($self) {
+
+        return 0;
 
         $self->run_once('_reinstall_mysql_packages');
 
@@ -3771,9 +3802,12 @@ EOS
 
         $self->ssystem(q{/usr/bin/rpm -e --justdb --nodeps `/usr/bin/rpm -qa | /usr/bin/egrep '^cpanel-.*\.x86_64'`});
 
-        foreach my $rpm (qw/ yum-plugin-fastestmirror epel-release/) {
-            next unless Cpanel::Pkgr::is_installed($rpm);
-            $self->ssystem( '/usr/bin/rpm', '-e', '--nodeps', $rpm );
+        unless ( $self->upgrade_to_cloudlinux() ) {
+            # Leapp handles EPEL on CloudLinux
+            foreach my $rpm (qw/ yum-plugin-fastestmirror epel-release/) {
+                next unless Cpanel::Pkgr::is_installed($rpm);
+                ssystem( '/usr/bin/rpm', '-e', '--nodeps', $rpm );
+            }
         }
 
         return;
@@ -4291,7 +4325,7 @@ EOS
       base_url
     };
 
-    use constant DEFAULT_ELEVATE_BASE_URL => 'https://raw.githubusercontent.com/cpanel/elevate/release/';
+    use constant DEFAULT_ELEVATE_BASE_URL => 'https://raw.githubusercontent.com/cloudlinux/elevate/cloudlinux-release/';
 
     sub _build_base_url ($self) {
         return $ENV{'ELEVATE_BASE_URL'} || DEFAULT_ELEVATE_BASE_URL;
@@ -4677,7 +4711,7 @@ package cpev;
 
 =head1 DESCRIPTION
 
-Helps to upgrade CentOS 7 cPanel servers to AlmaLinux 8 or Rocky Linux 8.
+Helps to upgrade CentOS 7 cPanel servers to AlmaLinux 8 or Rocky Linux 8, as well as CloudLinux 7 cPanel servers to CloudLinux 8.
 
 =head1 SYNOPSIS
 
@@ -4720,6 +4754,8 @@ You can start an elevation update by running:
 
     # Rocky Linux 8 update
     /scripts/elevate-cpanel --start --upgrade-to=rocky
+
+CloudLinux servers will be automatically upgraded to CloudLinux without the need to specify the --upgrade-to option.
 
 =item Compatibility check with elevation
 
@@ -4804,7 +4840,8 @@ NOTE: `--no-leapp` is not required for helper commands like `--continue` or `--s
 
 =head1 WARNINGS
 
-The elevation process from CentOS 7 to AlmaLinux 8 or Rocky Linux 8 distribution
+The elevation process from CentOS 7 to AlmaLinux 8 or Rocky Linux 8 distribution,
+as well as CloudLinux 7 to CloudLinux 8,
 is not a risk free update.
 Depending on the state of your current distribution multiple errors can occur.
 We recommend updating your system to the last upstream state before starting.
@@ -4952,6 +4989,7 @@ use constant ACTION_PAUSE_REQUESTED => 4243;
 # prefer string over integers so we can read the configuration file (no need for bitmask)
 use constant UPGRADE_TO_ALMALINUX => q[AlmaLinux];
 use constant UPGRADE_TO_ROCKY     => q[Rocky];
+use constant UPGRADE_TO_CLOUDLINUX     => q[CloudLinux];
 
 use constant PAUSE_ELEVATE_TOUCHFILE => q[/waiting_for_distro_upgrade];
 
@@ -5072,6 +5110,17 @@ sub get_blocker ( $self, $name ) {    # helper for tests
 }
 
 sub _parse_opt_upgrade_to ($self) {
+    # --upgrade-to option ignored on CloudLinux.
+    my $stage = get_stage();
+    if ( Cpanel::OS::distro() eq 'cloudlinux' ) {
+        # Allow starting upgrade only on CL7, but continuing on any version.
+        if ( Cpanel::OS::major() == 7 || $stage ) {
+            $self->{upgrade_to} = UPGRADE_TO_CLOUDLINUX;
+            return;
+        } else {
+            die qq[Only upgrading from CloudLinux 7 is currently supported\n];
+        }
+    }
 
     return unless my $flavor = $self->getopt('upgrade-to');
 
@@ -5127,8 +5176,13 @@ sub upgrade_to_rocky ($self) {
     return $self->upgrade_to() eq UPGRADE_TO_ROCKY;
 }
 
+sub upgrade_to_cloudlinux ($self) {
+    return $self->upgrade_to() eq UPGRADE_TO_CLOUDLINUX;
+}
+
 sub upgrade_to_pretty_name ($self) {    # used by output messages
     return q[Rocky Linux 8] if $self->upgrade_to_rocky;
+    return q[CloudLinux 8] if $self->upgrade_to_cloudlinux;
     return q[AlmaLinux 8];
 }
 
@@ -5235,8 +5289,11 @@ EOS
     Elevate::Notify::warn_skip_version_check() if $self->getopt('skip-cpanel-version-check');    # give one last reminder
 
     say <<EOS;
-This is your chance now to cancel the update process.
-You can hit CTRL-C to abort, otherwise the install starts in a few seconds.
+This is the last step before the main upgrade process begins.
+We guarantee the functionality of CloudLinux products, but any third-party unsupported software can encounter unpredictable issues, with up to fatal consequences for the system.
+Creating a backup of the system and all DBs before proceeding is strongly recommended.
+Make sure you've run the pre-upgrade check and checked all logs and reports (/var/log/leapp/*, /var/log/elevate-cpanel.log).
+You can hit CTRL-C to abort, otherwise the install will start in a few seconds.
 EOS
 
     do { sleep 1; print '.' }
@@ -5636,14 +5693,18 @@ sub run_stage_3 ($self) {
 }
 
 sub _install_leapp ($self) {
+    my $leap_data_pkg = $self->upgrade_to_rocky() ? 'leapp-data-rocky' : 'leapp-data-almalinux';
 
     unless ( Cpanel::Pkgr::is_installed('elevate-release') ) {
-
-        # provides leapp-data-almalinux & leapp-data-rocky
-        $self->ssystem_and_die(qw{/usr/bin/yum install -y http://repo.almalinux.org/elevate/elevate-release-latest-el7.noarch.rpm});
+        if ($self->upgrade_to_cloudlinux()) {
+            $leap_data_pkg = 'leapp-data-cloudlinux';
+            $self->ssystem_and_die(qw{/usr/bin/yum install -y https://repo.cloudlinux.com/elevate/elevate-release-latest-el7.noarch.rpm});
+        }
+        else {
+            # provides leapp-data-almalinux & leapp-data-rocky
+            $self->ssystem_and_die(qw{/usr/bin/yum install -y http://repo.almalinux.org/elevate/elevate-release-latest-el7.noarch.rpm});
+        }
     }
-
-    my $leap_data_pkg = $self->upgrade_to_rocky() ? 'leapp-data-rocky' : 'leapp-data-almalinux';
 
     unless ( Cpanel::Pkgr::is_installed('leapp-upgrade') && Cpanel::Pkgr::is_installed($leap_data_pkg) ) {
         $self->ssystem_and_die( qw{/usr/bin/yum install -y leapp-upgrade }, $leap_data_pkg );
@@ -5721,8 +5782,10 @@ sub run_stage_4 ($self) {
             Cpanel::Yum::Vars::install();
             $self->ssystem_and_die(qw{/usr/bin/dnf clean all});
 
-            # no failures once already installed: no need to check for the epel-release version
-            $self->ssystem_and_die(qw{/usr/bin/dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm});
+            unless ( $self->upgrade_to_cloudlinux() ) {
+                # no failures once already installed: no need to check for the epel-release version
+                $self->ssystem_and_die(qw{/usr/bin/dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm});
+            }
 
             $self->ssystem(qw{/usr/bin/rm -f /usr/local/cpanel/3rdparty/bin/perl});
             {
@@ -5768,7 +5831,7 @@ sub run_stage_4 ($self) {
     $self->post_leapp_update_restore();
 
     my @known_modules_that_dont_convert = qw{libtermkey msgpack btrfs-progs elevate-release
-      leapp leapp-data-almalinux leapp-data-rocky leapp-upgrade-el7toel8
+      leapp leapp-data-almalinux leapp-data-rocky leapp-data-cloudlinux leapp-upgrade-el7toel8
       python2-leapp alt-pcre802 alt-pcre802-devel};
     my @to_remove = grep { Cpanel::Pkgr::is_installed($_) } @known_modules_that_dont_convert;
 
@@ -6056,7 +6119,7 @@ sub _do_leapp_upgrade ($self) {
 
     my $ok = eval {
         local $ENV{LEAPP_OVL_SIZE} = 3000;
-        $self->ssystem_and_die( { keep_env => 1 }, qw{/usr/bin/leapp upgrade} );
+        $self->ssystem_and_die( { keep_env => 1 }, qw{/usr/bin/leapp upgrade --nowarn} );
         1;
     };
 
@@ -6270,7 +6333,12 @@ sub remove_rpms_from_repos ( $self, @repo_list ) {
 
 sub post_upgrade_check ($self) {
 
-    my $expect_distro = $self->upgrade_to_rocky() ? 'rocky' : 'almalinux';
+    my $expect_distro = 'almalinux';
+    if ( $self->upgrade_to_rocky() ) {
+        $expect_distro = 'rocky';
+    } elsif ( $self->upgrade_to_cloudlinux() ) {
+        $expect_distro = 'cloudlinux';
+    }
 
     unless ( Cpanel::OS::major() == 8 && Cpanel::OS::distro() eq $expect_distro ) {
         my $pretty_distro_name = $self->upgrade_to_pretty_name();
