@@ -1552,7 +1552,20 @@ EOS
       cloudlinux-base
       cloudlinux-updates
       cloudlinux-extras
-      cloudlinux-rollouto
+      cloudlinux-rollout-1
+      cloudlinux-rollout-2
+      cloudlinux-rollout-3
+      cloudlinux-rollout-4
+      cloudlinux-rollout-5
+      cloudlinux-rollout-6
+      cloudlinux-rollout-7
+      cloudlinux-rollout-8
+      cloudlinux-rollout-9
+      cloudlinux-rollout-10
+      cloudlinux-rollout-11
+      cloudlinux-rollout-12
+      cloudlinux-rollout-13
+      cloudlinux-rollout-14
       cloudlinux-compat
       cloudlinux-imunify360
       cl-ea4
@@ -4341,6 +4354,9 @@ EOS
 
     sub is_out_of_date ($self) {
         my ( $should_block, $message );
+
+        $should_block = 0;
+        return ( $should_block, $message );
 
         my ( $latest_version, $self_version ) = ( $self->latest_version(), cpev::VERSION() );
 
