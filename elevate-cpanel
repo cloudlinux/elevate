@@ -493,6 +493,8 @@ BEGIN {    # Suppress load of all of these at earliest point.
 
     sub _blocker_old_mysql ( $self, $mysql_version = undef ) {
 
+        # Old MySQL versions are not an issue on CloudLinux installations, they
+        # are expected.
         return 0;
 
         $mysql_version //= $self->cpconf->{'mysql-version'} // '';
@@ -704,7 +706,7 @@ EOS
     }
 
     sub _blocker_is_non_centos7 ($self) {
-        unless ( Cpanel::OS::major() == 7 ) {
+        unless ( Cpanel::OS::major() == 7 && (Cpanel::OS::distro() eq 'centos' || Cpanel::OS::distro() eq 'cloudlinux') ) {
             my $pretty_distro_name = $self->upgrade_to_pretty_name();
             return $self->has_blocker(qq[This script is only designed to upgrade CentOS 7 or CloudLinux 7 to $pretty_distro_name.]);
         }
@@ -736,7 +738,7 @@ EOS
 
     sub bail_out_on_inappropriate_distro () {
 
-        if ( !( ( Cpanel::OS::major() == 7 ) ) ) {
+        if ( !( ( Cpanel::OS::major() == 7 && (Cpanel::OS::distro() eq 'centos' || Cpanel::OS::distro() eq 'cloudlinux') ) ) ) {
             FATAL(qq[This script is designed to only run on CentOS 7 and CloudLinux 7 servers.\n]);
             exit 1;
         }
@@ -1436,7 +1438,10 @@ EOS
     use Cpanel::Pkgr ();
 
     sub check ($self) {
+        # Python 3.6 is not a blocker on CloudLinux, it can be installed and is
+        # maintained. Doesn't interfere with the upgrade process either.
         return 0;
+
         my $pkg = Cpanel::Pkgr::what_provides('python36');
         return unless $pkg && Cpanel::Pkgr::is_installed($pkg);
         return $self->has_blocker( <<~"END" );
@@ -4355,6 +4360,7 @@ EOS
     sub is_out_of_date ($self) {
         my ( $should_block, $message );
 
+        # CloudLinux Elevate does not provide an updating mechanism at the moment.
         $should_block = 0;
         return ( $should_block, $message );
 
@@ -4856,9 +4862,7 @@ NOTE: `--no-leapp` is not required for helper commands like `--continue` or `--s
 
 =head1 WARNINGS
 
-The elevation process from CentOS 7 to AlmaLinux 8 or Rocky Linux 8 distribution,
-as well as CloudLinux 7 to CloudLinux 8,
-is not a risk free update.
+The elevation process from CloudLinux 7 to CloudLinux 8 is not a risk free update.
 Depending on the state of your current distribution multiple errors can occur.
 We recommend updating your system to the last upstream state before starting.
 
