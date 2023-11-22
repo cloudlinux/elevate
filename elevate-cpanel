@@ -1556,6 +1556,9 @@ EOS
       cloudlinux
       cloudlinux-base
       cloudlinux-updates
+      cloudlinux-updates-testing
+      cloudlinux-hybrid-updates
+      cloudlinux-hybrid-updates-testing
       cloudlinux-extras
       cloudlinux-rollout-1
       cloudlinux-rollout-2
@@ -1573,7 +1576,9 @@ EOS
       cloudlinux-rollout-14
       cloudlinux-compat
       cloudlinux-imunify360
+      cloudlinux-imunify360-testing
       cl-ea4
+      cl-ea4-testing
       cloudlinux-ea4
       cloudlinux-ea4-rollout
       cloudlinux-ea4-testing
