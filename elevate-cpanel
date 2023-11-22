@@ -1848,8 +1848,9 @@ EOS
     }
 
     sub _blocker_invalid_ssh_config ($self) {
-        return $self->has_blocker(q[Issue with sshd configuration]) unless $self->_sshd_setup();
+        # CloudLinux Leapp handles the SSH config automatically.
         return 0;
+        return $self->has_blocker(q[Issue with sshd configuration]) unless $self->_sshd_setup();
     }
 
     sub _sshd_setup ($self) {
