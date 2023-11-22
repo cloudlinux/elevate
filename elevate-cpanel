@@ -706,9 +706,9 @@ EOS
     }
 
     sub _blocker_is_non_centos7 ($self) {
-        unless ( Cpanel::OS::major() == 7 && (Cpanel::OS::distro() eq 'centos' || Cpanel::OS::distro() eq 'cloudlinux') ) {
+        unless ( Cpanel::OS::major() == 7 && Cpanel::OS::distro() eq 'cloudlinux' ) {
             my $pretty_distro_name = $self->upgrade_to_pretty_name();
-            return $self->has_blocker(qq[This script is only designed to upgrade CentOS 7 or CloudLinux 7 to $pretty_distro_name.]);
+            return $self->has_blocker(qq[This script is only designed to upgrade CloudLinux 7 to $pretty_distro_name.]);
         }
 
         return 0;
@@ -719,7 +719,7 @@ EOS
             my $pretty_distro_name = $self->upgrade_to_pretty_name();
             return $self->has_blocker(
                 sprintf(
-                    'You need to run CentOS 7 or CloudLinux 7.%s and later to upgrade %s. You are currently using %s',    #
+                    'You need to run CloudLinux 7.%s and later to upgrade %s. You are currently using %s',    #
                     MINIMUM_CENTOS_7_SUPPORTED, $pretty_distro_name, Cpanel::OS::display_name()           #
                 )
             );
@@ -730,7 +730,7 @@ EOS
 
     sub _blocker_is_experimental_os ($self) {
         if ( -e '/var/cpanel/caches/Cpanel-OS.custom' ) {
-            return $self->has_blocker('Experimental OS detected. This script only supports CentOS 7 and CloudLinux 7 upgrades');
+            return $self->has_blocker('Experimental OS detected. This script only supports CloudLinux 7 upgrades');
         }
 
         return 0;
@@ -738,8 +738,8 @@ EOS
 
     sub bail_out_on_inappropriate_distro () {
 
-        if ( !( ( Cpanel::OS::major() == 7 && (Cpanel::OS::distro() eq 'centos' || Cpanel::OS::distro() eq 'cloudlinux') ) ) ) {
-            FATAL(qq[This script is designed to only run on CentOS 7 and CloudLinux 7 servers.\n]);
+        if ( !( ( Cpanel::OS::major() == 7 && Cpanel::OS::distro() eq 'cloudlinux' ) ) ) {
+            FATAL(qq[This script is designed to only run on CloudLinux 7 servers.\n]);
             exit 1;
         }
 
@@ -4457,7 +4457,7 @@ EOS
 
         print {$fh} <<~"EOF";
         [Unit]
-        Description=Upgrade process from CentOS 7 to $pretty_distro_name.
+        Description=Upgrade process from CloudLinux 7 to $pretty_distro_name.
         After=network.target network-online.target
 
         [Service]
@@ -4733,7 +4733,7 @@ package cpev;
 
 =head1 DESCRIPTION
 
-Helps to upgrade CentOS 7 cPanel servers to AlmaLinux 8 or Rocky Linux 8, as well as CloudLinux 7 cPanel servers to CloudLinux 8.
+Helps to upgrade CloudLinux 7 cPanel servers to CloudLinux 8.
 
 =head1 SYNOPSIS
 
@@ -5285,7 +5285,7 @@ sub give_last_chance ($self) {
 
     my $pretty_distro_name = $self->upgrade_to_pretty_name();
 
-    print_box(qq[/!\ Warning: You are about to convert your cPanel & WHM CentOS 7 to $pretty_distro_name server.]);
+    print_box(qq[/!\ Warning: You are about to convert your cPanel & WHM CloudLinux 7 to $pretty_distro_name server.]);
 
     present_noc_recommendations();
 
@@ -5474,7 +5474,7 @@ sub _notify_success ($self) {
     my $pretty_distro_name = $self->upgrade_to_pretty_name();
 
     my $msg = <<"EOS";
-The cPanel & WHM server has completed the elevation process from CentOS 7 to $pretty_distro_name.
+The cPanel & WHM server has completed the elevation process from CloudLinux 7 to $pretty_distro_name.
 EOS
 
     if ( my $warnings = read_stage_file( 'final_notifications', [] ) ) {
