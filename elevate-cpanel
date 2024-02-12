@@ -1581,6 +1581,20 @@ EOS
       cl-ea4-testing
       cloudlinux-ea4
       cloudlinux-ea4-rollout
+      cloudlinux-ea4-rollout-1
+      cloudlinux-ea4-rollout-2
+      cloudlinux-ea4-rollout-3
+      cloudlinux-ea4-rollout-4
+      cloudlinux-ea4-rollout-5
+      cloudlinux-ea4-rollout-6
+      cloudlinux-ea4-rollout-7
+      cloudlinux-ea4-rollout-8
+      cloudlinux-ea4-rollout-9
+      cloudlinux-ea4-rollout-10
+      cloudlinux-ea4-rollout-11
+      cloudlinux-ea4-rollout-12
+      cloudlinux-ea4-rollout-13
+      cloudlinux-ea4-rollout-14
       cloudlinux-ea4-testing
       cl-mysql
       cl-mysql-meta
