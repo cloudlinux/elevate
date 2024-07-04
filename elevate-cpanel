@@ -7646,7 +7646,7 @@ CloudLinux 7 => CloudLinux 8
        --skip-cpanel-version-check               Skip the check for whether cPanel is up to date.
                                                  This option is intended only for testing!
 
-       --skip-removing-obsolete-packages         Skip the check for whether cPanel is up to date.
+       --skip-removing-obsolete-packages         Skip removing packages that are considered for removal by Leapp.
                                                  This option is intended only for testing!
 
        --no-leapp                                Do not try to run leapp, and pause instead.
