@@ -5097,11 +5097,10 @@ EOS
     }
 
     sub _remove_obsolete_packages ($self) {
-
-        return if $self->getopt('skip-removing-obsolete-packages');
-
         my @pkgs_to_remove = OBSOLETE_PACKAGES();
-        $self->yum->remove(@pkgs_to_remove);
+        foreach my $pkg (@pkgs_to_remove) {
+            $self->rpm->remove_no_dependencies_and_justdb($pkg);
+        }
         return;
     }
 
@@ -7360,7 +7359,6 @@ EOS
           help
           service start clean continue manual-reboots status log check:s
           skip-cpanel-version-check skip-elevate-version-check
-          skip-removing-obsolete-packages
           update version
           no-leapp
           non-interactive
@@ -7644,9 +7642,6 @@ CloudLinux 7 => CloudLinux 8
 
        --skip-elevate-version-check              Skip the check for whether this script is up to date.
        --skip-cpanel-version-check               Skip the check for whether cPanel is up to date.
-                                                 This option is intended only for testing!
-
-       --skip-removing-obsolete-packages         Skip removing packages that are considered for removal by Leapp.
                                                  This option is intended only for testing!
 
        --no-leapp                                Do not try to run leapp, and pause instead.

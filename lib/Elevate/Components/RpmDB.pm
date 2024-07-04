@@ -57,11 +57,12 @@ sub _cleanup_rpms ($self) {
 }
 
 sub _remove_obsolete_packages ($self) {
-
-    return if $self->getopt('skip-removing-obsolete-packages');
-
     my @pkgs_to_remove = OBSOLETE_PACKAGES();
-    $self->yum->remove(@pkgs_to_remove);
+
+    foreach my $pkg (@pkgs_to_remove) {
+        $self->rpm->remove_no_dependencies_and_justdb($pkg);
+    }
+
     return;
 }
 
