@@ -2193,6 +2193,8 @@ EOS
 
         $self->run_once('_restore_ea4_profile');
         $self->run_once('_restore_ea_addons');
+        $self->run_once('_restore_non_ea_prefix_packages');
+        $self->run_once('_restore_ea_prefix_packages');
 
         $self->run_once('_restore_config_files');
 
@@ -2208,11 +2210,65 @@ EOS
 
     sub _cleanup_rpm_db ($self) {
 
+        my $ea_pkgs_info = Elevate::PkgMgr::get_installed_pkgs('ea-*');
+        my @ea_pkgs      = sort keys %{ $ea_pkgs_info // {} };
+        Elevate::StageFile::update_stage_file( { 'ea_prefix_packages_to_restore' => \@ea_pkgs } ) if scalar @ea_pkgs;
+
         Elevate::PkgMgr::remove('ea-*');
 
         if ( $self->_has_non_ea_prefix_packages() ) {
             my @supported_non_ea_prefix_packages = $self->_get_installed_non_ea_prefix_supported_packages();
+            Elevate::StageFile::update_stage_file( { 'non_ea_prefix_packages_to_restore' => [ sort @supported_non_ea_prefix_packages ] } );
             Elevate::PkgMgr::remove(@supported_non_ea_prefix_packages);
+        }
+
+        return;
+    }
+
+    sub _restore_non_ea_prefix_packages ($self) {
+
+        my $packages = Elevate::StageFile::read_stage_file('non_ea_prefix_packages_to_restore');
+        return unless ref $packages eq 'ARRAY' && scalar @$packages;
+
+        INFO( sprintf( 'Restoring %d non-ea-prefix package(s) removed in pre_distro_upgrade.', scalar @$packages ) );
+
+        my $ok = eval { Elevate::PkgMgr::install(@$packages); 1 };
+        if ( !$ok ) {
+            my $err = $@ || 'unknown error';
+            WARN("Failed to reinstall non-ea-prefix packages: $err");
+            my $pkg_list = join "\n", map { "  - $_" } @$packages;
+            Elevate::Notify::add_final_notification(
+                "elevate-cpanel removed the following packages in pre_distro_upgrade (via additional-pkg-prefixes/) but could not reinstall them post-upgrade:\n$pkg_list\n\nPlease reinstall them manually (e.g. dnf install <packages>) once you have verified target-OS availability.",
+                1
+            );
+        }
+
+        return;
+    }
+
+    sub _restore_ea_prefix_packages ($self) {
+
+        my $packages = Elevate::StageFile::read_stage_file('ea_prefix_packages_to_restore');
+        return unless ref $packages eq 'ARRAY' && scalar @$packages;
+
+        my $installed = Elevate::PkgMgr::get_installed_pkgs('ea-*') // {};
+        my @missing   = grep { !exists $installed->{$_} } @$packages;
+        return unless scalar @missing;
+
+        INFO( sprintf( 'Reinstalling %d ea-prefix package(s) not restored by ea_install_profile.', scalar @missing ) );
+
+        eval { Elevate::PkgMgr::install_with_options( ['--skip-broken'], \@missing ); 1 } or do {
+            WARN( "ea-prefix reinstall raised an error: " . ( $@ || 'unknown' ) );
+        };
+
+        my $now_installed = Elevate::PkgMgr::get_installed_pkgs('ea-*') // {};
+        my @still_missing = grep { !exists $now_installed->{$_} } @missing;
+        if ( scalar @still_missing ) {
+            my $pkg_list = join "\n", map { "  - $_" } @still_missing;
+            Elevate::Notify::add_final_notification(
+                "elevate-cpanel removed the following ea-prefix packages in pre_distro_upgrade and could not reinstall them post-upgrade:\n$pkg_list\n\nPlease reinstall them manually once their target-OS dependencies are resolvable (e.g. dnf install <packages>).",
+                1
+            );
         }
 
         return;
