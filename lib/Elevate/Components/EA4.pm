@@ -68,6 +68,7 @@ sub post_distro_upgrade ($self) {
 
     $self->run_once('_restore_ea4_profile');
     $self->run_once('_restore_ea_addons');
+    $self->run_once('_restore_non_ea_prefix_packages');
 
     # This needs to happen after EA4 has been reinstalled
     #
@@ -97,11 +98,37 @@ sub _cleanup_rpm_db ($self) {
     # remove all ea- packages
     Elevate::PkgMgr::remove('ea-*');
 
-    # Remove any additional packages included in EA4 now that this is supported
-    # Only do this if additional prefix packages have been added
+    # Remove any additional packages included in EA4 now that this is supported.
+    # Snapshot the list to the stage file before removing so post_distro_upgrade
+    # can reinstall via _restore_non_ea_prefix_packages.
     if ( $self->_has_non_ea_prefix_packages() ) {
         my @supported_non_ea_prefix_packages = $self->_get_installed_non_ea_prefix_supported_packages();
+        Elevate::StageFile::update_stage_file( { 'non_ea_prefix_packages_to_restore' => [ sort @supported_non_ea_prefix_packages ] } );
         Elevate::PkgMgr::remove(@supported_non_ea_prefix_packages);
+    }
+
+    return;
+}
+
+sub _restore_non_ea_prefix_packages ($self) {
+
+    # Reinstall the non-ea-prefix packages snapshotted by _cleanup_rpm_db.
+    # Failures are non-fatal: surface a final notification so the admin can
+    # finish manually (e.g. missing target-OS build, unreachable channel).
+    my $packages = Elevate::StageFile::read_stage_file('non_ea_prefix_packages_to_restore');
+    return unless ref $packages eq 'ARRAY' && scalar @$packages;
+
+    INFO( sprintf( 'Restoring %d non-ea-prefix package(s) removed in pre_distro_upgrade.', scalar @$packages ) );
+
+    my $ok = eval { Elevate::PkgMgr::install(@$packages); 1 };
+    if ( !$ok ) {
+        my $err = $@ || 'unknown error';
+        WARN("Failed to reinstall non-ea-prefix packages: $err");
+        my $pkg_list = join "\n", map { "  - $_" } @$packages;
+        Elevate::Notify::add_final_notification(
+            "elevate-cpanel removed the following packages in pre_distro_upgrade (via additional-pkg-prefixes/) but could not reinstall them post-upgrade:\n$pkg_list\n\nPlease reinstall them manually (e.g. dnf install <packages>) once you have verified target-OS availability.",
+            1
+        );
     }
 
     return;

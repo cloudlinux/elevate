@@ -1139,6 +1139,96 @@ sub test__get_installed_non_ea_prefix_supported_packages : Test(4) ($self) {
     return;
 }
 
+sub test__cleanup_rpm_db_snapshots_non_ea_prefix_packages : Test(3) ($self) {
+
+    # Verifies that _cleanup_rpm_db writes the non-ea-prefix package list to
+    # the stage file BEFORE calling remove, so post_distro_upgrade can replay
+    # the list in _restore_non_ea_prefix_packages.
+
+    my $cpev = cpev->new();
+    my $ea4  = $cpev->get_component('EA4');
+
+    my $mock_ea4 = Test::MockModule->new('Elevate::Components::EA4');
+    $mock_ea4->redefine(
+        _has_non_ea_prefix_packages                     => sub { return 1; },
+        _get_installed_non_ea_prefix_supported_packages => sub { return ( 'alt-php84', 'alt-php81', 'alt-php82' ); },
+    );
+
+    my @removed;
+    my $mock_pkgmgr = Test::MockModule->new('Elevate::PkgMgr');
+    $mock_pkgmgr->redefine(
+        remove => sub { push @removed, [@_]; return; },
+    );
+
+    $stage_file->unlink;
+    $ea4->_cleanup_rpm_db;
+
+    is(
+        Elevate::StageFile::read_stage_file('non_ea_prefix_packages_to_restore'),
+        [ 'alt-php81', 'alt-php82', 'alt-php84' ],
+        'Stage file has the sorted non-ea-prefix package list',
+    );
+
+    is( $removed[0], ['ea-*'],                                  'ea-* removed first' );
+    is( $removed[1], [ 'alt-php84', 'alt-php81', 'alt-php82' ], 'non-ea-prefix packages removed after snapshot' );
+
+    return;
+}
+
+sub test__restore_non_ea_prefix_packages : Test(12) ($self) {
+
+    my $cpev = cpev->new();
+    my $ea4  = $cpev->get_component('EA4');
+
+    my @installed;
+    my $mock_pkgmgr = Test::MockModule->new('Elevate::PkgMgr');
+    $mock_pkgmgr->redefine(
+        install => sub { push @installed, [@_]; return; },
+    );
+
+    # Hash::Merge merges arrays additively, so clear the key between scenarios
+    # via remove_from_stage_file rather than relying on a fresh update_stage_file.
+    my $set_list = sub {
+        Elevate::StageFile::remove_from_stage_file('non_ea_prefix_packages_to_restore');
+        Elevate::StageFile::update_stage_file( { non_ea_prefix_packages_to_restore => $_[0] } ) if defined $_[0];
+    };
+
+    # No stage-file entry => no-op
+    $stage_file->unlink;
+    $ea4->_restore_non_ea_prefix_packages;
+    is( \@installed, [], 'no install when stage file has no list' );
+
+    # Empty list => no-op
+    @installed = ();
+    $set_list->( [] );
+    $ea4->_restore_non_ea_prefix_packages;
+    is( \@installed, [], 'no install when stage file list is empty' );
+
+    # Populated list => single install call with all packages
+    @installed = ();
+    $set_list->( [ 'alt-php81', 'alt-php84' ] );
+    $ea4->_restore_non_ea_prefix_packages;
+    message_seen( INFO => qr/^Restoring 2 non-ea-prefix package\(s\)/ );
+    is( scalar @installed, 1,                            'one install call' );
+    is( $installed[0],     [ 'alt-php81', 'alt-php84' ], 'install called with full list' );
+
+    # install dies => no rethrow, final notification queued
+    @installed = ();
+    $mock_pkgmgr->redefine( install => sub { die "boom\n"; } );
+    my @notes;
+    my $mock_notify = Test::MockModule->new('Elevate::Notify');
+    $mock_notify->redefine( add_final_notification => sub { push @notes, [@_]; return; } );
+
+    $set_list->( ['alt-php81'] );
+    ok( lives { $ea4->_restore_non_ea_prefix_packages }, 'does not rethrow when install fails' )
+      or note $@;
+    message_seen( INFO => qr/^Restoring 1 non-ea-prefix package\(s\)/ );
+    message_seen( WARN => qr/^Failed to reinstall non-ea-prefix packages: boom/ );
+    is( scalar @notes, 1, 'add_final_notification was called once' );
+
+    return;
+}
+
 sub test__has_non_ea_prefix_packages : Test(2) ($self) {
 
     my $cpev = cpev->new();
