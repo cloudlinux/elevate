@@ -64,46 +64,54 @@ my $cl   = $cpev->get_blocker('CloudLinux');
     foreach my $version ( 7, 8 ) {
         set_os_to( 'cloud', 8 );
 
-        $system_status = 1;
+        # CLOS-4690 regression: rhn_check failing must NOT block the upgrade
+        # as long as cldetect reports a valid license. rhn_check is a
+        # CLN-registration round-trip that always fails on servers not
+        # registered with CLN (no-auth / contract-licensed),
+        # so it is no longer consulted here.
+        $system_status         = 1;        # rhn_check would fail IF it were called
+        $capture_output_status = 0;
+        @stdout                = ('ok');
+
+        # Before the fix this raised an abort blocker, so catch it: a regression
+        # should fail here by name rather than end the test file.
+        my $result;
+        ok(
+            lives { $result = $cl->_check_cloudlinux_license() },
+            'A failing rhn_check does not raise a blocker when cldetect reports OK (CLOS-4690)'
+        ) or note $@;
+        is $result, 0, 'No blocker when cldetect reports OK, even though rhn_check would fail (CLOS-4690)';
+
+        is(
+            \@cmds,
+            [ [ '/usr/bin/cldetect', '--check-license' ] ],
+            'Only cldetect is consulted; rhn_check is no longer called'
+        );
+
+        no_messages_seen();
+        @cmds = ();
+
+        # cldetect exits non-zero -> blocker
+        $capture_output_status = 1;
+        @stdout                = ();
 
         my $blocker = dies { $cl->_check_cloudlinux_license() };
 
-        is ref $blocker, 'cpev::Blocker', 'A blocker object is returned when a blocker is found';
-        is(
-            \@cmds,
-            [
-                [
-                    '/usr/bin/cldetect',
-                    '--check-license',
-                ],
-                [
-                    '/usr/sbin/rhn_check',
-                ],
-            ],
-            'The expected system commands are called'
-        );
-
+        is ref $blocker, 'cpev::Blocker', 'A blocker object is returned when cldetect exits non-zero';
         check_blocker_content($blocker);
+        @cmds = ();
 
-        $system_status         = 0;
-        $capture_output_status = 1;
-
-        $blocker = dies { $cl->_check_cloudlinux_license() };
-
-        check_blocker_content($blocker);
-
+        # cldetect prints a non-ok line -> blocker
         $capture_output_status = 0;
-        @stdout                = (
-            'CL license is not ok',
-        );
+        @stdout                = ('CL license is not ok');
 
         $blocker = dies { $cl->_check_cloudlinux_license() };
 
         check_blocker_content($blocker);
+        @cmds = ();
 
-        @stdout = (
-            'ok',
-        );
+        # cldetect reports OK -> no blocker
+        @stdout = ('ok');
 
         is $cl->_check_cloudlinux_license(), 0, 'No blockers are found when CL has a valid license';
 

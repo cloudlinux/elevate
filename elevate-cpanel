@@ -1248,8 +1248,7 @@ EOS
     # use Log::Log4perl qw(:easy);
     INIT { Log::Log4perl->import(qw{:easy}); }
 
-    use constant CLDETECT  => '/usr/bin/cldetect';
-    use constant RHN_CHECK => '/usr/sbin/rhn_check';
+    use constant CLDETECT => '/usr/bin/cldetect';
 
     sub check ($self) {
         return $self->_check_cloudlinux_license();
@@ -1260,7 +1259,7 @@ EOS
 
         my $out = $self->ssystem_capture_output( CLDETECT, '--check-license' );
 
-        if ( $self->ssystem(RHN_CHECK) != 0 || $out->{status} != 0 || grep { $_ !~ m/^ok/i } @{ $out->{stdout} } ) {
+        if ( $out->{status} != 0 || grep { $_ !~ m/^ok/i } @{ $out->{stdout} } ) {
 
             $self->components->abort_on_first_blocker(1);
 
