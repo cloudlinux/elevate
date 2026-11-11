@@ -255,4 +255,44 @@ EOS
     }
 }
 
+{
+    note 'Testing _remove_excludes with the excludepkgs spelling (CLOS-4690)';
+
+    # dnf reads excludepkgs= as well as exclude=. A host that spells it the new
+    # way (for example a dnf.conf that /etc/yum.conf links to) kept its excludes,
+    # and with them 'filesystem': leapp then cannot install the target
+    # userspace, so 'leapp preupgrade' fails before the upgrade starts.
+    set_os_to( 'cloud', 8 );
+
+    my $content;
+    my $actual_content;
+    my $mock_file_slurper = Test::MockModule->new('File::Slurper');
+    $mock_file_slurper->redefine(
+        read_text  => sub { return $content; },
+        write_text => sub { $actual_content = $_[1]; },
+    );
+
+    $content = <<'EOS';
+[main]
+excludepkgs=bind-chroot courier* dovecot* exim* filesystem httpd* mod_ssl* mysql* php* proftpd* pure-ftpd*
+gpgcheck=True
+skip_if_unavailable=True
+reposdir=/etc/yum.repos.local.d
+EOS
+
+    my $expected_content = <<'EOS';
+[main]
+
+gpgcheck=True
+skip_if_unavailable=True
+reposdir=/etc/yum.repos.local.d
+EOS
+
+    is( $comp->_remove_excludes(), undef,             'Returns undef' );
+    is( $actual_content,           $expected_content, 'Removes an excludepkgs line from yum.conf too' );
+
+    message_seen( INFO => 'Removing excludes from /etc/yum.conf' );
+    no_messages_seen();
+}
+
 done_testing();

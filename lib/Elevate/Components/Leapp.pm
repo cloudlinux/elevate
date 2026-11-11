@@ -175,7 +175,7 @@ sub _remove_excludes ($self) {
     my $txt   = eval { File::Slurper::read_text($yum_conf) };
     my @lines = split "\n", $txt;
     foreach my $line (@lines) {
-        next unless $line =~ /^\s*exclude\s*=/;
+        next unless $line =~ /^\s*exclude(?:pkgs)?\s*=/;    # dnf reads both spellings
         $line = '';
     }
 
