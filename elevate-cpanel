@@ -7295,13 +7295,16 @@ EOS
     use Elevate::OS        ();
     use Elevate::PkgMgr    ();
 
-    use Cwd ();
+    use Cwd            ();
+    use File::Basename ();
 
-    # use Log::Log4perl qw(:easy);
+    # use Log::Log4perl  qw(:easy);
     INIT { Log::Log4perl->import(qw{:easy}); }
 
-    use Cpanel::Pkgr      ();
-    use Cpanel::Yum::Vars ();
+    use Cpanel::EA4::Install ();
+    use Cpanel::OS           ();
+    use Cpanel::Pkgr         ();
+    use Cpanel::Yum::Vars    ();
 
     # use Elevate::Components::Base();
     our @ISA;
@@ -7355,6 +7358,8 @@ EOS
         Cpanel::Yum::Vars::install();
         Elevate::PkgMgr::clean_all();
 
+        $self->_expose_cpanel_repos_to_dnf();
+
         if ( Elevate::OS::needs_epel() ) {
             my $epel_url = 'https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm';
 
@@ -7378,6 +7383,90 @@ EOS
         $self->ssystem_and_die(qw{/usr/local/cpanel/scripts/sysup});
 
         return;
+    }
+
+    sub _expose_cpanel_repos_to_dnf ($self) {
+        return if Elevate::OS::is_apt_based();
+
+        my $repo_dir  = Cpanel::OS::repo_dir();
+        my @reposdirs = $self->_dnf_reposdirs();
+        return if !@reposdirs || grep { $_ eq $repo_dir } @reposdirs;
+
+        my ($target) = grep { -d $_ } @reposdirs;
+        if ( !$target ) {
+            WARN( "dnf reads repositories only from " . join( ', ', @reposdirs ) . ", and none of these exists" );
+            return;
+        }
+
+        INFO("dnf reads repositories only from $target, not from $repo_dir, where cPanel keeps its own. Linking what cPanel needs and dnf cannot see.");
+
+        Cpanel::EA4::Install::install_ea4_repo() if Cpanel::OS::ea4_install_bare_repo();
+
+        my $vars = $self->_dnf_variables();
+
+        my %file_for;
+        foreach my $file ( sort glob("$repo_dir/*.repo") ) {
+            $file_for{$_} //= $file for _repo_ids_in_file( $file, $vars );
+        }
+
+        my @needed = Cpanel::OS::package_repositories()->@*;
+        push @needed, _repo_ids_in_file( Cpanel::OS::ea4_from_bare_repo_path(), $vars ) if Cpanel::OS::ea4_install_bare_repo();
+
+        my %visible = map { $_ => 1 } Elevate::PkgMgr::repolist_all();
+        my ( %seen, %linked );
+        foreach my $id ( grep { !$visible{$_} && !$seen{$_}++ } @needed ) {
+            my $file = $file_for{$id};
+            if ( !$file ) {
+                WARN("cPanel needs the repository '$id', which neither $target nor $repo_dir defines");
+                next;
+            }
+            next if $linked{$file}++;
+
+            my $link = "$target/" . File::Basename::basename($file);
+            if ( -e $link || -l $link ) {
+                WARN("Not linking $link for the repository '$id' cPanel needs: a file of that name already exists");
+                next;
+            }
+
+            INFO("Linking $link to $file for the repository '$id' cPanel needs");
+            symlink( $file, $link ) or WARN("Could not link $link to $file: $!");
+        }
+
+        return;
+    }
+
+    sub _dnf_reposdirs ($self) {
+        my $out = $self->ssystem_hide_and_capture_output(qw{/usr/bin/dnf config-manager --dump});
+        return if $out->{status};
+
+        my ($line) = grep { m/^reposdir\s*=/ } @{ $out->{stdout} };
+        return if !defined $line;
+
+        $line =~ s/^reposdir\s*=\s*//;
+        return map { s{(?<=.)/+$}{}r } grep { length } split( m/[\s,]+/, $line );
+    }
+
+    sub _dnf_variables ($self) {
+        my $out = $self->ssystem_hide_and_capture_output(qw{/usr/bin/dnf config-manager --dump-variables});
+        return {} if $out->{status};
+
+        return { map { m/^(\w+)\s*=\s*(.*)$/ ? ( $1 => $2 ) : () } @{ $out->{stdout} } };
+    }
+
+    sub _repo_ids_in_file ( $file, $vars ) {
+        open( my $fh, '<', $file ) or return;
+
+        my @ids;
+        while ( my $line = <$fh> ) {
+            next unless $line =~ m/^\s*\[([^\]]+)\]/;
+            my $id = $1;
+            next if $id eq 'main';
+            $id =~ s{(\$(?:\{(\w+)\}|(\w+)))}{ $vars->{ $2 // $3 } // $1 }ge;
+            push @ids, $id;
+        }
+        close $fh;
+
+        return @ids;
     }
 
     1;
